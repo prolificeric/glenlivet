@@ -1,7 +1,12 @@
 var cheerio = require('cheerio');
 var _ = require('lodash');
+var glenlivet = require('../../lib');
 
 function htmlToJson (config) {
+    if (this instanceof glenlivet.Bottle === false) {
+        return;
+    }
+
     this.middleware({
         'setup': function (context) {
             context.htmlToJson = {};
@@ -9,7 +14,7 @@ function htmlToJson (config) {
         'filter:fetch': function (context) {
             var $ = cheerio.load(context.fetch.response.body);
 
-            context.htmlToJson.json = new ParseContext({
+            context.json = context.htmlToJson.json = new ParseContext({
                 $: $,
                 $el: $.root(),
                 structure: config

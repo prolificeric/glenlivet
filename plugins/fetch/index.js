@@ -1,72 +1,75 @@
 var _ = require('lodash');
 var request = require('request');
 
-module.exports = function (config) {
-    function paramMiddleware (type, processVals) {
-        return function (context, next, done) {
-            var missingParams = [];
-            var params = config.params[type];
-            var vals = {};
+function paramMiddleware (config, type, processVals) {
+    return function (context, next, done) {
+        var missingParams = [];
+        var params = config.params[type];
+        var vals = {};
 
-            _.each(params, function (spec, name) {
-                var val;
+        _.each(params, function (spec, name) {
+            var val;
 
-                //The data type of the spec determines its behavior
-                switch (typeof spec) {
+            //The data type of the spec determines its behavior
+            switch (typeof spec) {
 
-                    //Function calculates the value
-                    case 'function':
-                        val = spec.call(context);
-                        break;
+                //Function calculates the value
+                case 'function':
+                    val = spec(context);
+                    break;
 
-                    //Boolean for whether or not it's required
-                    case 'boolean':
-                        val = context.data[name];
+                //Boolean for whether or not it's required
+                case 'boolean':
+                    val = context.data[name];
 
-                        if (!val && spec === true) {
-                            missingParams.push(name);
-                        }
+                    if (!val && spec === true) {
+                        missingParams.push(name);
+                    }
 
-                        break;
+                    break;
 
-                    //Any other type is assigned as the value
-                    default:
-                        val = spec;
-                        break;
+                //Any other type is assigned as the value
+                default:
+                    val = spec;
+                    break;
 
-                }
-
-                vals[name] = context.data[name] = val;
-            });
-
-            processVals(vals, context);
-
-            if (missingParams.length > 0) {
-                done.error(new MissingParamsError(type, missingParams));
-            } else {
-                next();
             }
-        };
-    }
 
-    function MissingParamsError (type, names) {
-        return new Error(type + ' params missing: ' + names.join(', '));
-    }
+            vals[name] = context.data[name] = val;
+        });
 
+        processVals(vals, context);
+
+        if (missingParams.length > 0) {
+            done.error(new MissingParamsError(type, missingParams));
+        } else {
+            next();
+        }
+    };
+}
+
+function MissingParamsError (type, names) {
+    return new Error(type + ' params missing: ' + names.join(', '));
+}
+
+module.exports = function (config) {
     this.appendTo({
             'setup': ['fetch'],
             'process': ['fetch'],
             'filter': ['fetch']
         })
         .appendTo({
-            'setup:fetch': ['uri', 'qs', 'json', 'form', 'headers']
+            'setup:fetch': ['method', 'uri', 'qs', 'json', 'form', 'headers']
         })
         .middleware({
             'before setup:fetch': function (context) {
                 context.fetch = {};
                 context.fetch.requestOptions = _.cloneDeep(config.requestOptions || {});
             },
-            'setup:fetch:uri': paramMiddleware('uri', function (vals, context) {
+            'setup:fetch:method': function (context) {
+                context.fetch.requestOptions.method = (config.method || 'GET').toLowerCase();
+            },
+            'setup:fetch:uri': paramMiddleware(config, 'uri', function (vals, context) {
                 var uri = config.uri;
 
                 _.each(vals, function (v, k) {
@@ -75,7 +78,7 @@ module.exports = function (config) {
 
                 context.fetch.requestOptions.uri = uri;
             }),
-            'setup:fetch:qs': paramMiddleware('qs', function (vals, context) {
+            'setup:fetch:qs': paramMiddleware(config, 'qs', function (vals, context) {
                 context.fetch.requestOptions.qs = vals;
             }),
             'setup:fetch:json': function (context, next) {
@@ -94,10 +97,10 @@ module.exports = function (config) {
 
                 next.skip('setup:fetch:form');
             },
-            'setup:fetch:form': paramMiddleware('form', function (vals, context) {
+            'setup:fetch:form': paramMiddleware(config, 'form', function (vals, context) {
                 context.fetch.requestOptions.form = vals;
             }),
-            'setup:fetch:headers': paramMiddleware('headers', function (vals, context) {
+            'setup:fetch:headers': paramMiddleware(config, 'headers', function (vals, context) {
                 context.fetch.requestOptions.headers = vals;
             }),
             'process:fetch': function (context, next) {
